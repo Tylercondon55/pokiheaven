@@ -1,5 +1,6 @@
 {
   "check_interval_seconds": 300,
+  "respect_robots_txt": true,
   "user_agent": "PokiHeavenStockAlert/1.0 (+contact: you@example.com)",
   "products": [
     {

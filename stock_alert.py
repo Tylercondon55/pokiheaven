@@ -13,6 +13,8 @@ import smtplib
 import sys
 import time
 import urllib.error
+import urllib.parse
+import urllib.robotparser
 import urllib.request
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -71,6 +73,7 @@ class AppConfig:
     user_agent: str
     products: tuple[Product, ...]
     email: EmailSettings | None = None
+    respect_robots_txt: bool = True
 
 
 @dataclass(frozen=True)
@@ -136,6 +139,7 @@ def load_config(path: Path) -> AppConfig:
         user_agent=str(raw.get("user_agent") or DEFAULT_USER_AGENT),
         products=products,
         email=email,
+        respect_robots_txt=bool(raw.get("respect_robots_txt", True)),
     )
 
 
@@ -229,6 +233,32 @@ def fetch_product(product: Product, user_agent: str, timeout_seconds: int = 20) 
     return result
 
 
+def robots_url_for(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, "/robots.txt", "", "", ""))
+
+
+def ensure_robots_allowed(
+    product: Product,
+    user_agent: str,
+    parser_cache: dict[str, urllib.robotparser.RobotFileParser],
+) -> None:
+    robots_url = robots_url_for(product.url)
+    parser = parser_cache.get(robots_url)
+    if parser is None:
+        parser = urllib.robotparser.RobotFileParser(robots_url)
+        try:
+            parser.read()
+        except (OSError, urllib.error.URLError) as exc:
+            raise MonitorError(f"Failed to read robots.txt for {product.url}: {exc}") from exc
+        parser_cache[robots_url] = parser
+
+    if not parser.can_fetch(user_agent, product.url):
+        raise ConfigurationError(
+            f"{product.name} is disallowed by robots.txt at {robots_url}; choose an allowed source"
+        )
+
+
 def ensure_no_anti_abuse_signal(product: Product, result: FetchResult) -> None:
     if result.status_code in ANTI_ABUSE_STATUS_CODES:
         raise AntiAbuseSignal(
@@ -252,7 +282,10 @@ def is_in_stock(product: Product, result: FetchResult) -> bool:
 
 def run_once(config: AppConfig, notifier: Notifier) -> int:
     notifications = 0
+    robot_parsers: dict[str, urllib.robotparser.RobotFileParser] = {}
     for product in config.products:
+        if config.respect_robots_txt:
+            ensure_robots_allowed(product, config.user_agent, robot_parsers)
         result = fetch_product(product, config.user_agent)
         if is_in_stock(product, result):
             notifier.send(product, result)

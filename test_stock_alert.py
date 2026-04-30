@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+from urllib.robotparser import RobotFileParser
 
 import stock_alert
 
@@ -78,6 +79,45 @@ class StockAlertTests(unittest.TestCase):
 
         with self.assertRaises(stock_alert.AntiAbuseSignal):
             stock_alert.fetch_product(product, "UnitTestAgent/1.0")
+
+    def test_robots_txt_disallow_blocks_product_before_fetch(self) -> None:
+        product = stock_alert.Product(
+            name="Walmart search results",
+            url="https://www.walmart.com/search?q=pokemon%20cards",
+            in_stock_markers=("add to cart",),
+        )
+        parser = RobotFileParser()
+        parser.parse(
+            [
+                "User-agent: *",
+                "Disallow: /search",
+                "Disallow: /api/",
+                "Disallow: /feeds/*",
+            ]
+        )
+        parser_cache = {stock_alert.robots_url_for(product.url): parser}
+
+        with self.assertRaises(stock_alert.ConfigurationError):
+            stock_alert.ensure_robots_allowed(product, "UnitTestAgent/1.0", parser_cache)
+
+    def test_robots_txt_allows_non_disallowed_product_path(self) -> None:
+        product = stock_alert.Product(
+            name="Allowed product page",
+            url="https://www.walmart.com/ip/example-product/123",
+            in_stock_markers=("add to cart",),
+        )
+        parser = RobotFileParser()
+        parser.parse(
+            [
+                "User-agent: *",
+                "Disallow: /search",
+                "Disallow: /api/",
+                "Disallow: /feeds/*",
+            ]
+        )
+        parser_cache = {stock_alert.robots_url_for(product.url): parser}
+
+        stock_alert.ensure_robots_allowed(product, "UnitTestAgent/1.0", parser_cache)
 
 
 if __name__ == "__main__":
