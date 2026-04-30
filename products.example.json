@@ -1,0 +1,21 @@
+{
+  "check_interval_seconds": 300,
+  "user_agent": "PokiHeavenStockAlert/1.0 (+contact: you@example.com)",
+  "products": [
+    {
+      "name": "Example Pokemon booster box",
+      "url": "https://example.com/",
+      "in_stock_markers": ["add to cart", "in stock"],
+      "out_of_stock_markers": ["sold out", "out of stock"]
+    }
+  ],
+  "email": {
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 587,
+    "username": "alerts@example.com",
+    "password": "replace-with-an-app-password",
+    "from_address": "alerts@example.com",
+    "to_addresses": ["you@example.com"],
+    "use_tls": true
+  }
+}
